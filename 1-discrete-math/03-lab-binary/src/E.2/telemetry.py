@@ -1,0 +1,1 @@
+open('telemetry.out', 'w').write((lambda n, k :'\n'.join(map((lambda s: ''.join(c for c in s)), zip(*[''.join((lambda n, k, s : ''.join('%d' % i * k for i in range(n)[::(1 if s == 0 else -1)]))(k, k ** (i - 1), j % 2 ) for j in range(k ** (n - i))) for i in range(1, n + 1)]))))(*map(int, open('telemetry.in').read().split())))

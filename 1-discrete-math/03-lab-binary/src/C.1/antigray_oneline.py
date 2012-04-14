@@ -1,0 +1,1 @@
+open('antigray.out', 'w').write('\n'.join(map((lambda s: ''.join(c for c in s)), zip(*(lambda n: map((lambda s: ''.join({'0': '012', '1': '120', '2': '201'}[c] for c in s)), map((lambda s: ''.join(c for c in s)), zip(*[(lambda n, a : ''.join('%s' % str(a / (3 ** i) % 3) for i in range(n))[::-1])(n, i) for i in range(3 ** (n - 1))]))))(int(open('antigray.in').read()))))))
