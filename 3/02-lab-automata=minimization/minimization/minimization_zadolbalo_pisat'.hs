@@ -2,10 +2,13 @@ import System.IO
 import Data.Array.ST
 import Control.Monad.ST
 import Data.Array
+import qualified Data.Array.Unboxed as U
 import qualified Data.Set as S
 import qualified Data.Map as M
+import qualified Data.Sequence as SQ
 import Control.Applicative
 import qualified Data.ByteString.Char8 as B
+import Debug.Trace
 
 type Vertex = Int
 data DFA = DFA { startVertex :: Vertex
@@ -28,13 +31,13 @@ getLines _ 0 = return []
 getLines h n = do
     s <- B.hGetLine h
     ss <- getLines h $ n - 1
-    return $ s:ss
+    return $! s:ss
 
 addTransition :: STArray s Int (M.Map Char Vertex) -> (Vertex, Vertex, Char) 
                 -> ST s () 
 addTransition arr (v1, v2, ch) = do
     m <- readArray arr v1
-    writeArray arr v1 $ M.insert ch v2 m
+    writeArray arr v1 $! M.insert ch v2 m
 
 buildTransitionTable :: Int -> [(Vertex, Vertex, Char)] 
                         -> Array Int (M.Map Char Int)
@@ -52,17 +55,49 @@ getDFA h = do
     let e = buildTransitionTable n edges
     return $ DFA 0 e terminals
 
+data Pair a = PairS !a !a
+
+getEqClassesMatrix :: DFA -> U.UArray (Vertex, Vertex) Bool
+getEqClassesMatrix dfa = runSTUArray m where
+    n :: Int
+    n = max where (_, max) = bounds $! go dfa
+
+    t :: [Vertex]
+    t = S.toList $! terminals dfa
+
+    nt :: [Vertex]
+    nt = S.toList $! S.difference (S.fromList [0..n-1]) $! terminals dfa 
+
+    q :: SQ.Seq (Vertex, Vertex)
+    q = SQ.fromList $! [(v1,v2) | v1 <- t, v2 <- nt] ++ [(v2, v1) | v1 <- t, v2 <- nt]
+
+    m :: ST s (STUArray s (Vertex, Vertex) Bool)
+    m = undefined
+
+    same :: ST s (STUArray s (Vertex, Vertex) Bool)
+    same = newArray ((0,0), (n-1,n-1)) True
+
+    used :: ST s (STUArray s (Vertex, Vertex) Bool)
+    used = newArray ((0,0), (n-1,n-1)) False
+
+    bfs :: SQ.Seq (Vertex, Vertex) -> STUArray s (Vertex, Vertex) Bool -> ST s ()
+    bfs = undefined
+
+minimize :: DFA -> DFA
+minimize = undefined where
+    
+
 instance Eq DFA where
     dfa1 == dfa2 = runST $ run where  
         run :: ST s Bool 
         run = do
             s1 <- newArray (bounds $ go dfa1) False
             s2 <- newArray (bounds $ go dfa2) False
-            dfs s1 s2 (startVertex dfa1, startVertex dfa2)
+            dfs s1 s2 $! (startVertex dfa1, startVertex dfa2)
 
         zipM :: Eq a => M.Map a b -> M.Map a c -> Maybe [(b,c)]
         zipM m1 m2 
-            | M.keys m1 == M.keys m2 = Just $ zip (M.elems m1) (M.elems m2)
+            | M.keys m1 == M.keys m2 = Just $! zip (M.elems m1) (M.elems m2)
             | otherwise = Nothing
 
         dfs :: STArray s Int Bool -> STArray s Int Bool
@@ -71,19 +106,22 @@ instance Eq DFA where
             u1 <- readArray s1 v1
             u2 <- readArray s2 v2
             case (u1, u2) of
-                (True, True) -> return True
-                (False, True) -> return False
-                (True, False) -> return False
+                (True, True) -> return $! True
+                (False, True) -> return $! False
+                (True, False) -> return $! False
                 (False, False) -> do
-                    writeArray s1 v1 True
-                    writeArray s2 v2 True
-                    let m1 = (go dfa1) ! v1
-                    let m2 = (go dfa2) ! v2
-                    case zipM m1 m2 of
-                        Nothing -> return False
-                        Just pairs -> do
-                            new <- mapM (dfs s1 s2) pairs
-                            return $ all id new 
+                    if S.member v1 (terminals dfa1) /= S.member v2 (terminals dfa2) 
+                        then return $! False
+                        else do 
+                            writeArray s1 v1 True
+                            writeArray s2 v2 True
+                            let m1 = (go dfa1) ! v1
+                            let m2 = (go dfa2) ! v2
+                            case zipM m1 m2 of
+                                Nothing -> return $! False
+                                Just pairs -> do
+                                    new <- mapM (dfs s1 s2) pairs
+                                    return $! all id new 
 
 main = do
     input <- openFile "isomorphism.in" ReadMode
