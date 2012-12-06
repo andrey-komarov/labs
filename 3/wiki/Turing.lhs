@@ -14,11 +14,13 @@
 %include polycode.fmt
 %options ghci
 %format Var v = v
-%format App x y = x y
-%format Lam x v = "\lambda" x "\to" v
+%format App x y = x "\times" y
+%format `App` = " \cdot "
+%format Lam x = "\lambda" x "\to"
 %format if' = if
 %format then' = then
 %format else' = else
+%format $ = " "
 
 \long\def\ignore#1{}
 
@@ -26,9 +28,152 @@
 
 \ignore{
 \begin{code}
-import Prelude hiding (id, succ, fst, snd, pred)
+import Prelude hiding (id, succ, pred, and, or, catch, head, tail)
+import qualified Prelude as P
 \end{code}
 }
+
+\ignore{
+\begin{code}
+import Control.Exception
+import Control.Monad.State
+import qualified Data.Map as M
+import Data.Maybe (fromMaybe)
+
+type Variable = String
+data Term = Var Variable | Lam Variable Term | App Term Term deriving (Ord)
+
+instance Show Term where
+    show (Var x) = x
+    show (Lam x e) = "\\" ++ x ++ "." ++ show e
+    show (App e1@(Lam _ _) e2) = "(" ++ show e1 ++ ") (" ++ show e2 ++ ")"
+    show (App e1 (Var v)) = show e1 ++ " " ++ v
+    show (App e1 e2) = show e1 ++ " (" ++ show e2 ++ ")"
+
+free (Var v)    = [ v ]
+free (Lam v t)  = filter (/= v) . free $ t
+free (App t t') = (free t) ++ (free t')
+
+subst :: Term -> Variable -> Term -> Term
+subst t@(Var v)   var what = if v == var then what else t
+subst t@(Lam v b) var what = if v == var then t else Lam v (subst b var what)
+subst (App t t')  var what = App (subst t var what) (subst t' var what)
+
+newname :: [Variable] -> Variable -> Variable 
+newname fv = P.head . filter (not . flip elem fv) . iterate ('_':)
+
+deny:: [String] -> Term -> Term
+deny d (Var v) = Var v -- Var $ newname d v
+deny d (Lam v t) = Lam v' $ subst t v (Var v') where v' = newname (d ++ free t) v
+deny d (App t1 t2) = App (deny d t1) (deny d t2)
+
+unifyBound :: Term -> Term 
+unifyBound e = fst $ runState (unifyBound' e) (M.empty, free e)
+
+unifyBound' :: Term -> State (M.Map Variable Variable, [Variable]) Term
+unifyBound' (Var v) = do
+    (m, used) <- get
+    return $ Var $ fromMaybe v (M.lookup v m)
+unifyBound' e@(App t1 t2) = do
+    t1' <- unifyBound' t1
+    t2' <- unifyBound' t2
+    return $ App t1' t2'
+unifyBound' (Lam x t) = do
+    (m, used) <- get
+    let new = fst $ runState unused used
+    put (M.insert x new m, new:used)
+    e <- unifyBound' t
+    (_, used') <- get
+    put (m, used')
+    return $ Lam new e
+
+eq :: Term -> Term -> Bool
+eq (Var v) (Var v') = v == v'
+eq (Lam v1 e1) (Lam v2 e2) = v1 == v2 && e1 `eq` e2
+eq (App e1 e2) (App e1' e2') = e1 `eq` e1' && e2 `eq` e2'
+eq _ _ = False
+
+instance Eq Term where
+    e1 == e2 = free e1 == free e2 && newE1 `eq` newE2 where
+        newE1 = unifyBound e1
+        newE2 = unifyBound e2
+        fv = free e1
+
+unused :: State [Variable] Variable
+unused = do
+    used <- get
+    let new = P.head $ filter (not . (`elem` used)) $ map show [1..]
+    put $ new:used
+    return new 
+
+no :: Integer -> Term -> Term
+
+no n t = no' n ({- unifyBound -} t)
+
+no' 0 t = error $ "Too long sequence at [" ++ show t ++ "]"
+no' n t 
+    | reduced = no (n - 1) rest
+    | otherwise = t
+    where (reduced, rest) = noOne t
+
+noOne :: Term -> (Bool, Term)
+noOne (App (Lam v t1) t2) = (True, subst (deny (free t2) t1) v t2)
+noOne t@(Var v) = (False, t)
+noOne (Lam v t) = (reduced, Lam v rest) 
+    where (reduced, rest) = noOne t 
+noOne t@(App t1 t2) = if reducedLeft 
+                        then (True, App t1' t2) 
+                        else if reducedRight
+                            then (True, App t1 t2')
+                            else (False, t)
+    where
+        (reducedLeft, t1') = noOne t1
+        (reducedRight, t2') = noOne t2
+        fv = free t2
+
+sa n t = sa' n $ {- unifyBound -} t
+
+sa' 0 t = error $ "Too long sequence at [" ++ show t ++ "]"
+sa' n t 
+    | reduced = sa (n - 1) rest
+    | otherwise = t
+    where (reduced, rest) = saOne t 
+
+saOne :: Term -> (Bool, Term)
+saOne t@(Var v) = (False, t)
+saOne (Lam v t) = (reduced, Lam v rest)
+    where (reduced, rest) = saOne t
+saOne t@(App t1 t2) = if reducedRight
+        then (True, App t1 t2')
+        else case t1 of 
+            (Lam v t1'') -> (True, subst (deny (free t2) t1'') v t2) where
+                (_, t1''') = saOne t1'' 
+            _ -> (reducedLeft, App t1' t2)
+    where 
+        (reducedRight, t2') = saOne t2
+        (reducedLeft, t1') = saOne t1
+
+normIO :: Int -> Term -> IO Term
+normIO step t = do
+    let (reduced, rest) = noOne t
+    print $ "================" ++ " step " ++ show step ++ " ======== "
+    if reduced
+        then normIO (step + 1) rest
+        else do 
+            print rest
+            return rest
+
+norm :: Term -> Term
+norm = no 1000
+
+toInt :: Term -> Int
+toInt (Var v) = 0
+toInt (Lam v x) = toInt x
+toInt (App v1 v2) = (toInt v1) + (toInt v2) + 1
+
+\end{code}
+}
+
 
 \section{Лямбда-исчисление}
 
@@ -145,10 +290,16 @@ $\eta$-редукция~--- преобразование |\x -> f x| в $f$.
 число.
 
 \begin{code}
+zero :: (t -> t) -> t -> t
 zero  = \s -> \z -> z
+zero' = Lam "s" $ Lam "z" $ Var "z"
+one :: (t -> t) -> t -> t
 one   = \s -> \z -> s z
+one' = Lam "s" $ Lam "z" $ Var "s" `App` Var "z"
 two   = \s -> \z -> s (s z)
+two' = Lam "s" $ Lam "z" $ Var "s" `App` (Var "s" `App` Var "z")
 three = \s -> \z -> s (s (s z))
+three' = Lam "s" $ Lam "z" $ Var "s" `App` (Var "s" `App` (Var "s" `App` Var "z"))
 \end{code}
 
 Каждое число будет функцией двух аргументов: какой-то функции и начального значения.
@@ -164,7 +315,9 @@ three = \s -> \z -> s (s (s z))
 $n+1$ раз применить, и начальное значение.
 
 \begin{code}
+succ :: ((t -> t) -> t -> t) -> (t -> t) -> t -> t
 succ = \n -> \s -> \z -> s (n s z)
+succ' = Lam "n" $ Lam "s" $ Lam "z" $ Var "s" `App` (Var "n" `App` Var "s" `App` Var "z")
 \end{code}
 
 Здесь $n s z$~--- $n$ раз применённая к $z$ функция $s$. Но нужно применить $n+1$ 
@@ -175,7 +328,9 @@ succ = \n -> \s -> \z -> s (n s z)
 единицу, а второе число.
 
 \begin{code}
+plus :: ((t -> t) -> t -> t) -> ((t -> t) -> t -> t) -> (t -> t) -> t -> t
 plus = \n -> \m -> \s -> \z -> n s (m s z)
+plus' = Lam "n" $ Lam "m" $ Lam "s" $ Lam "z" $ Var "n" `App` Var "s" `App` (Var "m" `App` Var "s" `App` Var "z")
 \end{code}
 
  <<$n$ раз применить $s$ к применённому $m$ раз $s$ к $z$>>
@@ -188,7 +343,9 @@ plus = \n -> \m -> \s -> \z -> n s (m s z)
 функции должна быть не $s$, а функция, применяющая $n$ раз $s$.
 
 \begin{code}
+mult :: ((t -> t) -> t -> t) -> ((t -> t) -> t -> t) -> (t -> t) -> t -> t
 mult = \n -> \m -> \s -> \z -> n (m s) z
+mult' = Lam "n" $ Lam "m" $ Lam "s" $ Var "n" `App` (Var "m" `App` Var "s")
 \end{code}
 
 Здесь |m s|~--- функция, которая $m$ раз применит $s$ к тому, что дадут ей на 
@@ -205,6 +362,7 @@ It's a kind of magic
 
 \begin{code}
 power = \n -> \m -> m n
+power' = Lam "n" $ Lam "m" $ Var "m" `App` Var "n"
 \end{code}
 
 |(power three (succ three)) (+1) 0 == | \eval{(power three (succ three)) (+1) 0}
@@ -212,7 +370,9 @@ power = \n -> \m -> m n
 \subsection{Логические значения}
 \begin{code}
 true = \a -> \b -> a
+true' = Lam "a" $ Lam "b" $ Var "a"
 false = \a -> \b -> b
+false' = Lam "a" $ Lam "b" $ Var "b"
 \end{code}
 
 Функции двух аргументов, возвращающие первый и второй, соответственное, аргументы.
@@ -221,14 +381,26 @@ false = \a -> \b -> b
 
 \begin{code}
 if' = \p -> \t -> \e -> p t e
+if'' = Lam "p" $ Lam "t" $ Lam "e" $ Var "p" `App` Var "t" `App` Var "e"
 \end{code}
 
 Если ей в качестве первого аргумента дадут $true$, то вернётся $t$, иначе~--- $e$.
+
+Стандартные функции булевой логики:
+
+\begin{code}
+and = \n -> \m -> if' n m false
+and' = Lam "n" $ Lam "m" $ if'' `App` Var "n" `App` Var "m" `App` false'
+or = \n -> \m -> if' n true m
+or' = Lam "n" $ Lam "m" $ if'' `App` Var "n" `App` true' `App` Var "m"
+not' = Lam "b" $ if'' `App` Var "b" `App` false' `App` true'
+\end{code}
 
 Ещё одной важной функцией является функция проверки, является ли число нулём:
 
 \begin{code}
 isZero = \n -> n (\c -> false) true
+isZero' = Lam "n" $ Var "n" `App` (Lam "c" false') `App` true'
 \end{code}
 
 Функция выглядит несколько странно. |\c -> false|~--- функция, которая независимо
@@ -241,8 +413,11 @@ isZero = \n -> n (\c -> false) true
 
 \begin{code}
 pair = \a -> \b -> \t -> t a b
-fst = \p -> p true
-snd = \p -> p false
+pair' = Lam "a" $ Lam "b" $ Lam "t" $ Var "t" `App` Var "a" `App` Var "b"
+fst' = \p -> p true
+fst'' = Lam "p" $ Var "p" `App` true'
+snd' = \p -> p false
+snd'' = Lam "p" $ Var "p" `App` false'
 \end{code}
 
 Функция $pair$ принимает два значения и запаковывает их в пару так, чтобы к
@@ -257,7 +432,7 @@ snd = \p -> p false
 Тогда на её основе легко сделать, собственно, вычитание.
 
 \begin{code}
-minus = \n -> \m -> m pred n
+minus' = Lam "n" $ Lam "m" $ Var "m" `App` pred' `App` Var "n"
 \end{code}
 
  <<$m$ раз вычесть единицу из $n$>>.
@@ -271,27 +446,228 @@ minus = \n -> \m -> m pred n
 сделаем следующее. $n$ раз выполним следующее: имея пару $(n-1, n-2)$ построим пару
 $(n, n-1)$. Тогда после $n$ шагов во втором элементе пары будет записано число
 $n-1$, которое и хочется получить.
+% --pred = \n -> \s -> \z -> n (\g -> \h -> h (g s)) (\u -> z) (\u->u)
+% --pred = \n -> \s -> \z -> snd (n (\p -> (pair (s (fst p)) (fst p))) (pair z z))
+% --pred = \n -> \s -> \z -> fst' (n (\p -> pair (s (fst p))(fst p)) (pair z z))
 
 \begin{code}
-pred = \n -> snd (n (\p -> (pair (succ (fst p)) (fst p))) (pair zero zero))
+pred' = Lam "n" $ 
+        Lam "s" $ 
+        Lam "z" $ 
+            snd'' `App` (Var "n" 
+                            `App` ( 
+                                     Lam "p" $ pair' 
+                                        `App` (Var "s" `App` (fst'' `App` Var "p"))
+                                        `App` (fst'' `App` Var "p")
+                                  )
+                            `App` ( pair' `App` Var "z" `App` Var "z" )
+                        )
 \end{code}
 
-Если вы ничего не поняли, не огорчайтесь. Ходят легенды, что Чёрч придумал
-это, находясь в психиатрической лечебнице. Возможно, только там такое и можно
-придумать.
+Если вы ничего не поняли, не огорчайтесь. Вычитание придумал Клини, когда 
+ему вырывали зуб мудрости. А сейчас наркоз уже не тот!
+
+\subsection{Сравнение}
+Так как вычитание определено таким способом, чтобы для случая, в котором
+уменьшаемое больше, чем вычитаемое, возвращать ноль, можно определить
+сравнение на больше-меньше через него. Равными же числа $a$ и $b$ считаются, 
+если $a - b = 0 \wedge b - a = 0$.
+
+\begin{code}
+le' = Lam "n" $ Lam "m" $ isZero' `App` (minus' `App` Var "n" `App` Var "m")
+less' = Lam "n" $ Lam "m" $ le' `App` Var "n" `App` (pred' `App` Var "m")
+eq' = Lam "n" $ Lam "m" $ and' 
+            `App` (isZero' `App` (minus' `App` Var "n" `App` Var "m"))
+            `App` (isZero' `App` (minus' `App` Var "m" `App` Var "n"))
+\end{code}
+
+\subsection{Комбинатор неподвижной точки}
+Попробуем выразить в лямбда-исчислении какую-нибудь рекурсивную функцию.
+Напрмер, факториал.
+
+\begin{spec}
+fact = \x -> if (isZero x) one (fact (pred x))
+\end{spec}
+
+Мы столкнулись с проблемой. В определении функции $fact$ используется функция 
+$fact$. При формальной замене, получим бесконечную функцию. Можно попытаться решить 
+эту проблему следующим образом
+
+\begin{spec}
+fact = (\f -> \x -> if (isZero x) one (f (pred x))) fact
+\end{spec}
+
+\emph{Неподвижной точкой} лямбда-функции $f$ назовём такую функцию $x$, что
+$f x \to_\beta x$. Лямбда исчисление обладаем замечательным свойством: у каждой
+функции есть неподвижная точка!
+
+Рассмотрим такую функцию. 
+
+\begin{code}
+fix' = Lam "f" $   (Lam "x" $ Var "f" `App` (Var "x" `App` Var "x"))
+            `App`  (Lam "x" $ Var "f" `App` (Var "x" `App` Var "x"))
+\end{code}
+
+Заметим, что $fix' \to_\beta \lambda f \to f ((\lambda x \to f (x x)) (\lambda x \to f (x x)))$.
+Или, что то же самое, 
+$\lambda f \to (\lambda x \to f (x x)) (\lambda x \to f (x x)) \to_\beta
+ \lambda f \to f ((\lambda x \to f (x x)) (\lambda x \to f (x x)))$
+
+Рассмотрим функцию
+
+\begin{code}
+fact'' = Lam "f" $ Lam "x" $ if'' `App` (isZero' `App` Var "x") 
+                                  `App` one'
+                                  `App` (mult' `App` Var "x" `App` (Var "f" `App`
+                                            (pred' `App` Var "x")))
+\end{code}
+
+Как было показано выше, $fix f \to_\beta f (fix f)$, то есть, 
+$fix fact'' \to_\beta fact'$, где $fact'$~--- искомая функция, считающая факториал.
+
+\begin{code}
+fact' = fix' `App` fact''
+\end{code}
+
+Это даст функцию, которая посчитает факториал числа. Но делать она это будет 
+мееедленно-меееедленно. Для того, чтобы посчитать $5!$ потребовалось сделать
+66066 $\beta$-редукций.
+
+Тут правда ничего не понятно? :'(
+
+\subsection{Деление}
+Воспользовавшись идеей о том, что можно делать рекурсивные функции, сделаем 
+функцию, которая будет искать частное двух чисел.
+
+\begin{code}
+div'' = Lam "div" $ Lam "n" $ Lam "m" $ if'' `App` (less' `App` Var "n" `App` Var "m")
+         `App` zero'
+         `App` (succ' `App` (Var "div" `App` (minus' `App` Var "n" `App` Var "m") `App` Var "m"))
+div' = fix' `App` div''
+\end{code}
+
+И остатка от деления
+
+\begin{code}
+mod'' = Lam "mod" $ Lam "n" $ Lam "m" $ if'' `App` (less' `App` Var "n" `App` Var "m")
+         `App` Var "n"
+         `App` (Var "mod" `App` (minus' `App` Var "n" `App` Var "m") `App` Var "m")
+mod' = fix' `App` mod'';
+\end{code}
+
+\subsection{Проверка на простоту}
+
+$isPrimeHelp$~--- принимает число, которое требуется проверить на простоту и 
+то, на что его надо попытаться поделить, перебирая это от 2 до $p-1$. Если на 
+что-нибудь разделилось, то число~--- составное, иначе~--- простое.
+
+\begin{code}
+isPrimeHelp' = Lam "f" $ Lam "p" $ Lam "i" $ if'' `App` (le' `App` Var "p" `App` Var "i")
+                `App` true'
+                `App` ( if'' `App` (isZero' `App` (mod' `App` Var "p" `App` Var "i"))
+                         `App` false'
+                         `App` (Var "f" `App` Var "p" `App` (succ' `App` Var "i"))
+                )
+isPrimeHelp = fix' `App` isPrimeHelp'
+isPrime = Lam "p" $ isPrimeHelp `App` Var "p" `App` two'
+\end{code}
+
+Следующее простое число. $nextPrime'$~--- следующее, больше либо равное заданного,
+$nextPrime$~--- следующее, большее заданного.
+
+\begin{code}
+nextPrime'' = Lam "f" $ Lam "p" $ if'' `App` (isPrime `App` Var "p")
+                                   `App` Var "p"
+                                   `App` (Var "f" `App` (succ' `App` Var "p")) 
+nextPrime' = fix' `App` nextPrime''
+nextPrime = Lam "p" $ nextPrime' `App` (succ' `App` Var "p")
+\end{code}
+
+$ithPrimeStep$ пропрыгает $i$ простых чисел вперёд. $ithPrime$ принимает число
+$i$ и пропрыгивает столько простых чисел вперёд, начиная с двойки.
+
+\begin{code}
+ithPrimeStep' = Lam "f" $ Lam "p" $ Lam "i" $ if'' `App` (isZero' `App` Var "i")
+                `App` Var "p"
+                `App` (Var "f" `App` (nextPrime `App` Var "p") `App` (pred' `App` Var "i"))
+ithPrimeStep = fix' `App` ithPrimeStep'
+ithPrime = Lam "i" $ ithPrimeStep `App` two' `App` Var "i"
+\end{code}
+
+...и всего через 314007 $\beta$-редукций вы узнаете, что третье простое число~---
+семь!
+
+\subsection{Списки}
+
+Для работы со списками чисел нам понадобятся следующие функции:
+\begin{itemize}
+    \item $empty$~--- возвращает пустой список
+    \item $cons$~--- принимает первый элемент и оставшийся список, склеивает их
+    \item $head$~--- вернуть голову списка
+    \item $tail$~--- вернуть хвост списка
+\end{itemize}
+
+Список будем хранить в следующем виде: $\langle len, p_1^{a_1}p_2^{a_2}\ldots p_{len}^{a_{len}} \rangle$. При этом, голова списка будет храниться как показатель степени при $p_{len}$.
+
+\begin{code}
+empty = pair' `App` zero' `App` one'
+cons = Lam "h" $ Lam "t" $ pair' `App` (succ' `App` (fst'' `App` Var "t"))
+        `App` (mult' `App` (snd'' `App` Var "t") `App` (power' 
+                `App` (ithPrime `App` (fst'' `App` Var "t"))
+                `App` Var "h"
+        ))
+head = Lam "list" $ getExponent `App` (snd'' `App` Var "list")
+                                `App` (ithPrime `App` (pred' `App` (fst'' `App` Var "list")))
+
+tail = Lam "list" $ pair' `App` (pred' `App` (fst'' `App` Var "list"))
+                          `App` (eliminateMultiplier `App` (snd'' `App` Var "list")
+                                  `App` (ithPrime `App` (pred' `App` (fst'' `App` Var "list" )))
+                                )
+
+eliminateMultiplier' = Lam "f" $ Lam "n" $ Lam "m" $ if'' `App` (isZero' `App` (mod' `App` Var "n" `App` Var "m"))
+                        `App` (Var "f" `App` (div' `App` Var "n" `App` Var "m") `App` Var "m")
+                        `App` Var "n"
+eliminateMultiplier = fix' `App` eliminateMultiplier'
+
+getExponent' = Lam "f" $ Lam "n" $ Lam "m" $ if'' `App` (isZero' `App` (mod' `App` Var "n" `App` Var "m"))
+                `App` (succ' `App`(Var "f" `App` (div' `App` Var "n" `App` Var "m") `App` Var "m"))
+                `App` zero'
+getExponent = fix' `App` getExponent'
+\end{code}
+
+На основе этого всего уже можно реализовать эмулятор машины тьюринга:
+с помощью пар, списков чисел можно хранить состояния. С помощью рекурсии можно
+обрабатывать переходы. Входная строка будет даваться, например, закодированной
+аналогично списку: пара из длины и числа, характеризующего список степенями 
+простых. Я бы продолжил это писать, но уже на операции $head [1, 2]$ я не 
+дождался окончания выполнения. Скорость лямбда-исчисления как вычислителя
+печальна.  
 
 \ignore{
 \begin{code}
+
+four' = norm $ succ' `App` three'
+five' = norm $ succ' `App` four'
+
+list2 = norm $ cons `App` one' `App` empty
+list32 = cons `App` zero' `App` list2
+
+normFiveFact = normIO 0 $ fact' `App` five'
 
 four = succ three
 
 seven = plus three four
 twentyeight = mult seven four
-fiftysix = mult twentyeight two
-fiftyfive = pred fiftysix
-six = pred seven
+-- fiftysix = mult twentyeight two
+-- fiftyfive = pred fiftysix
+-- six = pred seven
 
-main = do print $ fiftysix (+1) 0
+--main = do print $ fiftysix (+1) 0
+main = do
+ --   f <- normIO 0 $ ithPrime `App` three'
+ --   f <- normIO 0 $ getExponent `App` (norm $ plus' `App` four' `App` four') `App` two'
+    f <- normIO 0 $ head `App` (tail `App` list32)
+    print $ toInt f
 \end{code}
 }
 
