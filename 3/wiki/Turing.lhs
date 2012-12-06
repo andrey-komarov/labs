@@ -290,15 +290,9 @@ $\eta$-редукция~--- преобразование |\x -> f x| в $f$.
 число.
 
 \begin{code}
-zero :: (t -> t) -> t -> t
-zero  = \s -> \z -> z
 zero' = Lam "s" $ Lam "z" $ Var "z"
-one :: (t -> t) -> t -> t
-one   = \s -> \z -> s z
 one' = Lam "s" $ Lam "z" $ Var "s" `App` Var "z"
-two   = \s -> \z -> s (s z)
 two' = Lam "s" $ Lam "z" $ Var "s" `App` (Var "s" `App` Var "z")
-three = \s -> \z -> s (s (s z))
 three' = Lam "s" $ Lam "z" $ Var "s" `App` (Var "s" `App` (Var "s" `App` Var "z"))
 \end{code}
 
@@ -315,8 +309,6 @@ three' = Lam "s" $ Lam "z" $ Var "s" `App` (Var "s" `App` (Var "s" `App` Var "z"
 $n+1$ раз применить, и начальное значение.
 
 \begin{code}
-succ :: ((t -> t) -> t -> t) -> (t -> t) -> t -> t
-succ = \n -> \s -> \z -> s (n s z)
 succ' = Lam "n" $ Lam "s" $ Lam "z" $ Var "s" `App` (Var "n" `App` Var "s" `App` Var "z")
 \end{code}
 
@@ -328,8 +320,6 @@ succ' = Lam "n" $ Lam "s" $ Lam "z" $ Var "s" `App` (Var "n" `App` Var "s" `App`
 единицу, а второе число.
 
 \begin{code}
-plus :: ((t -> t) -> t -> t) -> ((t -> t) -> t -> t) -> (t -> t) -> t -> t
-plus = \n -> \m -> \s -> \z -> n s (m s z)
 plus' = Lam "n" $ Lam "m" $ Lam "s" $ Lam "z" $ Var "n" `App` Var "s" `App` (Var "m" `App` Var "s" `App` Var "z")
 \end{code}
 
@@ -343,8 +333,6 @@ plus' = Lam "n" $ Lam "m" $ Lam "s" $ Lam "z" $ Var "n" `App` Var "s" `App` (Var
 функции должна быть не $s$, а функция, применяющая $n$ раз $s$.
 
 \begin{code}
-mult :: ((t -> t) -> t -> t) -> ((t -> t) -> t -> t) -> (t -> t) -> t -> t
-mult = \n -> \m -> \s -> \z -> n (m s) z
 mult' = Lam "n" $ Lam "m" $ Lam "s" $ Var "n" `App` (Var "m" `App` Var "s")
 \end{code}
 
@@ -361,7 +349,6 @@ mult = \n -> \m -> \s -> n (m s)
 It's a kind of magic
 
 \begin{code}
-power = \n -> \m -> m n
 power' = Lam "n" $ Lam "m" $ Var "m" `App` Var "n"
 \end{code}
 
@@ -369,9 +356,7 @@ power' = Lam "n" $ Lam "m" $ Var "m" `App` Var "n"
 
 \subsection{Логические значения}
 \begin{code}
-true = \a -> \b -> a
 true' = Lam "a" $ Lam "b" $ Var "a"
-false = \a -> \b -> b
 false' = Lam "a" $ Lam "b" $ Var "b"
 \end{code}
 
@@ -380,7 +365,6 @@ false' = Lam "a" $ Lam "b" $ Var "b"
 чтобы красиво написать функцию $if$:
 
 \begin{code}
-if' = \p -> \t -> \e -> p t e
 if'' = Lam "p" $ Lam "t" $ Lam "e" $ Var "p" `App` Var "t" `App` Var "e"
 \end{code}
 
@@ -389,9 +373,7 @@ if'' = Lam "p" $ Lam "t" $ Lam "e" $ Var "p" `App` Var "t" `App` Var "e"
 Стандартные функции булевой логики:
 
 \begin{code}
-and = \n -> \m -> if' n m false
 and' = Lam "n" $ Lam "m" $ if'' `App` Var "n" `App` Var "m" `App` false'
-or = \n -> \m -> if' n true m
 or' = Lam "n" $ Lam "m" $ if'' `App` Var "n" `App` true' `App` Var "m"
 not' = Lam "b" $ if'' `App` Var "b" `App` false' `App` true'
 \end{code}
@@ -399,7 +381,6 @@ not' = Lam "b" $ if'' `App` Var "b" `App` false' `App` true'
 Ещё одной важной функцией является функция проверки, является ли число нулём:
 
 \begin{code}
-isZero = \n -> n (\c -> false) true
 isZero' = Lam "n" $ Var "n" `App` (Lam "c" false') `App` true'
 \end{code}
 
@@ -412,11 +393,8 @@ isZero' = Lam "n" $ Var "n" `App` (Lam "c" false') `App` true'
 \subsection{Пара}
 
 \begin{code}
-pair = \a -> \b -> \t -> t a b
 pair' = Lam "a" $ Lam "b" $ Lam "t" $ Var "t" `App` Var "a" `App` Var "b"
-fst' = \p -> p true
 fst'' = Lam "p" $ Var "p" `App` true'
-snd' = \p -> p false
 snd'' = Lam "p" $ Var "p" `App` false'
 \end{code}
 
@@ -654,10 +632,6 @@ list32 = cons `App` zero' `App` list2
 
 normFiveFact = normIO 0 $ fact' `App` five'
 
-four = succ three
-
-seven = plus three four
-twentyeight = mult seven four
 -- fiftysix = mult twentyeight two
 -- fiftyfive = pred fiftysix
 -- six = pred seven
