@@ -1,7 +1,9 @@
 {-# LANGUAGE GADTs, GeneralizedNewtypeDeriving #-}
 import Control.Monad.State
 import Control.Monad.Error
+import Control.Monad.Writer
 import Data.Char
+import Data.Monoid
 
 data ParseError = ParseError String deriving (Show)
 newtype Parser a b = Parser {
@@ -133,10 +135,40 @@ parse s = do
     lexems <- runParser lexer s
     runParser parser lexems
 
-tests = 
+checkIO :: [(String, Bool)] -> IO ()
+checkIO tests = do
+    let (ok, log) = runWriter (check tests)
+    forM log putStrLn
+    putStrLn $ if ok then "FAIL" else "OK"
+
+check :: [(String, Bool)] -> Writer [String] Bool
+check [] = return True
+check ((test, outcome):xs) = do
+    tell $ ["Checking on test " ++ show test]
+    let p = parse test
+    case p of
+        Left err -> do
+            tell ["No parse: " ++ err]
+            rest <- check xs
+            return $ rest && not outcome
+        Right s -> do
+            tell ["Success!: " ++ show s]
+            rest <- check xs
+            return $ rest && outcome
+
+tests = let {y = True; n = False} in
+    [ ("var a : int;", y)
+    , ("vbr b : int;", n)
+    , ("var a, b : int;", y)
+    , ("var a, b :: int;", n)
+    , ("var a, b : int; c : int;", y)
+    , ("var a, b : int; c, d : int;", y)
+    , ("var a,, b : int;", n)
+    , ("var a, b, c : int;;", n)
+    , ("var a : int", n)
+    , ("v a r a : int", n)
+    , ("     var a : int", y)
+    ]
 
 main = do
-    let s = "var a,b,c,dd : int; ee : double;"
-    print $ parse s
---    let s = "var " ++ concat (repeat "i : int ")
---    print $ runParser (parser <.> lexer) s
+    checkIO tests
