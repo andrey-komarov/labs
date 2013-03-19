@@ -5,7 +5,6 @@ import Control.Monad.Writer
 import Data.Char
 import Data.Monoid
 
-data ParseError = ParseError String deriving (Show)
 newtype Parser a b = Parser {
     runP :: ErrorT String (State [a]) b
 } deriving (Monad, MonadError String, MonadState [a])
@@ -70,6 +69,7 @@ tokSel ',' = expect1 ',' >> return [Comma]
 tokSel c 
     | isSpace c = like isSpace "space" >> return []
     | isAlpha c = sequence [parseName]
+    | otherwise = throwError ("Unknown token " ++ show c)
 
 lexer :: Parser Char [Lexem]
 lexer = do
@@ -85,10 +85,24 @@ lexer = do
  -}
 
 type Node = SNode
-data SNode = SNode DNode deriving (Show)
-data DNode = DNode ENode DNode | DEps deriving (Show)
-data ENode = ENode String INode String deriving (Show)
-data INode = INode String INode | IEps deriving (Show)
+data SNode = SNode DNode
+data DNode = DNode ENode DNode | DEps
+data ENode = ENode String INode String
+data INode = INode String INode | IEps
+
+instance Show SNode where
+    show (SNode d) = "var\n" ++ show d
+
+instance Show DNode where
+    show (DNode e d) = show e ++ show d
+    show DEps = ""
+
+instance Show ENode where
+    show (ENode name names tp) = "    " ++ name ++ show names ++ " : " ++ tp ++ ";\n"
+
+instance Show INode where
+    show (INode name names) = ", " ++ name ++ show names
+    show IEps = ""
 
 parseS :: Parser Lexem SNode
 parseS = do
@@ -139,20 +153,20 @@ checkIO :: [(String, Bool)] -> IO ()
 checkIO tests = do
     let (ok, log) = runWriter (check tests)
     forM log putStrLn
-    putStrLn $ if ok then "FAIL" else "OK"
+    putStrLn $ if ok then "OK" else "FAIL"
 
 check :: [(String, Bool)] -> Writer [String] Bool
 check [] = return True
 check ((test, outcome):xs) = do
-    tell $ ["Checking on test " ++ show test]
+    tell $ ["================================================================================", show test]
     let p = parse test
     case p of
         Left err -> do
-            tell ["No parse: " ++ err]
+            tell ["...No parse: " ++ err]
             rest <- check xs
             return $ rest && not outcome
         Right s -> do
-            tell ["Success!: " ++ show s]
+            tell [show s]
             rest <- check xs
             return $ rest && outcome
 
@@ -167,7 +181,10 @@ tests = let {y = True; n = False} in
     , ("var a, b, c : int;;", n)
     , ("var a : int", n)
     , ("v a r a : int", n)
-    , ("     var a : int", y)
+    , ("     var a : int", n)
+    , ("var", y)
+    , ("var ololo : a;", y)
+    , ("var ololo, tata, asda, asdf : asldfa; asdf, asdfas,f,asdf,asdf : double;a,b,c,d,e,f,g:bool;", y)
     ]
 
 main = do
