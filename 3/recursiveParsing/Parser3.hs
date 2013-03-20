@@ -4,6 +4,7 @@ import Control.Monad.Error
 import Control.Monad.Writer
 import Data.Char
 import Data.Monoid
+import System.Cmd
 
 newtype Parser a b = Parser {
     runP :: ErrorT String (State [a]) b
@@ -277,6 +278,26 @@ tests = let {y = True; n = False} in
 unRight :: Either a b -> b
 unRight (Right b) = b
 
+runTestIO :: String -> IO ()
+runTestIO test = do
+    case parse test of
+        Left err -> putStrLn $ "Parse error: " ++ err
+        Right t -> do
+            putStrLn "Parse successful"
+            writeFile "tmp.dot" $ viz t
+            system $ "dot -Tpng tmp.dot > tmp.png"
+            system $ "feh tmp.png"
+            return ()
+
+loopIO :: IO ()
+loopIO = do
+    putStrLn "Enter Pascal type (or exit):"
+    line <- getLine
+    if line == "exit"
+        then putStrLn "Bye!"
+        else runTestIO line >> loopIO
+
 main = do
+    loopIO
 --    checkIO tests
-    putStrLn $ viz $ unRight $ parse "var a, b, c, d : int; asdfa, asda, asd : ololo; d, e, f, g, h : double;"
+--    putStrLn $ viz $ unRight $ parse "var a, b, c, d : int; asdfa, asda, asd : ololo; d, e, f, g, h : double;"
