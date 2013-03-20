@@ -90,6 +90,92 @@ data DNode = DNode ENode DNode | DEps
 data ENode = ENode String INode String
 data INode = INode String INode | IEps
 
+newtype Traverser a = Traverser {
+    runT :: WriterT [String] (State Int) a
+} deriving (Monad, MonadWriter [String], MonadState Int)
+
+newId :: Traverser Int
+newId = do
+    n <- get
+    put $ n + 1
+    return n
+
+class GViz a where
+    gviz :: a -> Traverser Int
+
+viz :: SNode -> String
+viz t = let ((a, w), s) = (runState . runWriterT) (runT $ gviz t) 0
+        in concatMap (++"\n") w
+
+sameRank :: [Int] -> Traverser ()
+sameRank xs = tell ["  { rank=\"same\"; " 
+                ++ concatMap (\i -> "n" ++ show i ++ " ") xs
+                ++ "}"]
+
+link :: Int -> Int -> Traverser ()
+link n m = tell ["  n" ++ show n ++ " -- n" ++ show m ++ ";"]
+
+mkNode :: String -> String -> Traverser Int
+mkNode label color = do
+    n <- newId
+    tell ["  n" ++ show n ++ " [label=\"" ++ label ++ "\"" ++ "color=\"" ++ color ++ "\"]"]
+    return n
+
+instance GViz SNode where
+    gviz (SNode d) = do
+        tell ["graph {"]
+        n <- mkNode "S" "red"
+        m <- mkNode "Var" "blue"
+        n2 <- gviz d
+        sameRank [m, n2]
+        link n m
+        link n n2
+        tell ["}"]
+        return n
+
+instance GViz DNode where
+    -- D -> ED | eps
+    gviz (DNode e d) = do
+        n <- mkNode "D" "red"
+        e' <- gviz e
+        d' <- gviz d
+        sameRank [e', d']
+        link n e'
+        link n d'
+        return n
+    gviz DEps = mkNode "D" "red"
+
+instance GViz ENode where
+    -- E -> n I : n ;
+    gviz (ENode name1 i name2) = do
+        n  <- mkNode "E" "red"
+        n1 <- mkNode ("ID " ++ name1) "black"
+        n2 <- gviz i
+        n3 <- mkNode ":" "green"
+        n4 <- mkNode ("ID " ++ name2) "orange"
+        n5 <- mkNode ";" "green"
+        sameRank [n1, n2, n3, n4, n5]
+        link n n1
+        link n n2
+        link n n3
+        link n n4
+        link n n5
+        return n
+
+instance GViz INode where
+    -- I -> , n I | eps
+    gviz (INode name i) = do
+        n <- mkNode "I" "red"
+        n1 <- mkNode "," "green"
+        n2 <- mkNode ("ID " ++ name) "black"
+        n3 <- gviz i
+        sameRank [n1, n2, n3]
+        link n n1
+        link n n2
+        link n n3
+        return n
+    gviz IEps = mkNode "I" "red"
+
 instance Show SNode where
     show (SNode d) = "var\n" ++ show d
 
@@ -185,7 +271,12 @@ tests = let {y = True; n = False} in
     , ("var", y)
     , ("var ololo : a;", y)
     , ("var ololo, tata, asda, asdf : asldfa; asdf, asdfas,f,asdf,asdf : double;a,b,c,d,e,f,g:bool;", y)
+--    , ("var " ++ (concat $ take 10000 $ repeat " a : int; "), y)
     ]
 
+unRight :: Either a b -> b
+unRight (Right b) = b
+
 main = do
-    checkIO tests
+--    checkIO tests
+    putStrLn $ viz $ unRight $ parse "var a, b, c, d : int; asdfa, asda, asd : ololo; d, e, f, g, h : double;"
