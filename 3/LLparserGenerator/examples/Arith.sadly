@@ -1,0 +1,41 @@
+# Tokens are words consisting of latin letters, with first Capitalized
+# Comments start with # and end in the end of line
+# All after "::" is regex
+# * before token name means it should be thrown away
+SEMICOLON :: ;
+PLUS :: \\+
+STAR :: \\*
+OP :: \\(
+CP :: \\)
+NUM :: [0-9]+
+* WS :: \\s
+
+# Attribute declaration in form:
+# <non-terminal> . <attribute name> : <type> \n
+#
+# Rules:
+# <non-terminal> : <rule list> { semantic action }
+#                | <rule list> { semantic action }
+#                ... ;
+e : val . Integer
+e : t ee    { val = _1.val + _2.val; }
+  ;
+
+ee : val . Integer
+ee : PLUS t ee   { val = _2.val + _3.val; }
+   |             { val = 0; }
+   ;
+
+t : val . Integer
+t : f tt         { val = _1.val * _2.val; }
+  ;
+
+tt : val . Integer
+tt : STAR f tt   { val = _2.val * _3.val; }
+   |             { val = 1; }
+   ;
+
+f : val . Integer
+f : OP e CP    { val = _2.val; }
+  | NUM        { val = Integer.parseInt(_1); }
+  ;
