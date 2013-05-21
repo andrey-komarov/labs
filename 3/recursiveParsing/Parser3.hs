@@ -5,6 +5,7 @@ import Control.Monad.Writer
 import Data.Char
 import Data.Monoid
 import System.Cmd
+import System.IO
 
 newtype Parser a b = Parser {
     runP :: ErrorT String (State [a]) b
@@ -242,7 +243,7 @@ checkIO tests = do
     forM log putStrLn
     putStrLn $ if ok then "OK" else "FAIL"
 
-check :: [(String, Bool)] -> Writer [String] Bool
+check :: [Test] -> Writer [String] Bool
 check [] = return True
 check ((test, outcome):xs) = do
     tell $ ["================================================================================", show test]
@@ -256,6 +257,8 @@ check ((test, outcome):xs) = do
             tell [show s]
             rest <- check xs
             return $ rest && outcome
+
+type Test = (String, Bool)
 
 tests = let {y = True; n = False} in
     [ ("var a : int;", y)
@@ -284,6 +287,7 @@ runTestIO test = do
         Left err -> putStrLn $ "Parse error: " ++ err
         Right t -> do
             putStrLn "Parse successful"
+            putStrLn $ show t
             writeFile "tmp.dot" $ viz t
             system $ "dot -Tpng tmp.dot > tmp.png"
             system $ "feh tmp.png"
@@ -297,7 +301,29 @@ loopIO = do
         then putStrLn "Bye!"
         else runTestIO line >> loopIO
 
+processOne :: Handle -> Int -> Test -> IO ()
+processOne out n (test, res) = do
+    print $ "Processing test " ++ test
+    hPutStrLn out $ "\\subsection{Тест \\No" ++ show n ++ "}" ++ "\n"
+    hPutStrLn out $ "\\texttt{" ++ test ++ "}" ++ "\n"
+    hPutStrLn out $ "Ожидается " ++ (if res then "успех" else "провал") ++ "\n"
+    case parse test of
+        Left error -> hPutStrLn out $ "Ошибка: " ++ "\\texttt{" ++ error ++ "}" ++ "\n"
+        Right tree -> let fname = ("test" ++ show n) in do
+            writeFile (fname ++ ".dot") $ viz tree
+            system $ "dot -Teps " ++ fname ++ ".dot" ++ " > " ++ fname ++ ".eps"
+            hPutStrLn out $ "Успех! " ++ "\n"
+            hPutStrLn out $ "\\includegraphics[width=\\textwidth]{" ++ fname ++ ".eps" ++ "}" ++ "\n"
+            
+
+genTestsReport :: [Test] -> IO ()
+genTestsReport tests = do
+    outFile <- openFile "tests.tex" WriteMode
+    sequence_ $ zipWith (processOne outFile) [1..] tests
+    hClose outFile
+
 main = do
     loopIO
 --    checkIO tests
+--    genTestsReport tests
 --    putStrLn $ viz $ unRight $ parse "var a, b, c, d : int; asdfa, asda, asd : ololo; d, e, f, g, h : double;"

@@ -1,0 +1,31 @@
+\section{Разработка грамматики}
+
+\subsection{Задание}
+Описание переменных в Паскале.
+
+\subsection{Построение грамматики}
+\begin{tabular}{ r c l }
+    $S$ & $\to$ & $\mathrm{var}\, D$ \\
+    $D$ & $\to$ & $E\, D\, |\, \varepsilon$ \\
+    $E$ & $\to$ & $\mathrm{n}\, I\, \mathrm{:\, n\, ;}$ \\
+    $I$ & $\to$ & $\mathrm{,\, n}\, I\, |\, \varepsilon$ \\
+\end{tabular}
+
+\begin{center}
+    \begin{tabular}{ | l | l | }
+        \hline
+        \textbf{Нетерминал} & \textbf{Описание} \\
+        \hline
+        $S$ & Начальный нетерминал. \\
+        \hline
+        $D$ & Список определений. \\
+        \hline
+        $E$ & Одно определение. \\
+        \hline
+        $I$ & Список переменных. \\
+        \hline
+    \end{tabular}
+\end{center}
+
+В грамматике нет левой рекурсии или правого ветвления. 
+

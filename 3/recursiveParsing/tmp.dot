@@ -1,0 +1,8 @@
+graph {
+  n0 [label="S"color="red"]
+  n1 [label="Var"color="blue"]
+  n2 [label="D"color="red"]
+  { rank="same"; n1 n2 }
+  n0 -- n1;
+  n0 -- n2;
+}

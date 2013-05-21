@@ -1,0 +1,27 @@
+\section{Построение лексического анализатора}
+
+В нашей грамматике четыре терминала: <<:>> (двоеточие), <<;>> (точка с запятой),
+<<,>> (запятая) и <<n>> (идентификатор).
+
+\begin{verbatim}
+data Lexem 
+    = Colon
+    | Semicolon
+    | Comma
+    | Name String deriving (Eq, Show, Read)
+\end{verbatim}
+
+\begin{tabular}{| l | c |}
+    \hline
+    \textbf{Терминал} & \textbf{Токен} \\
+    \hline
+    : & \verb+Colon+ \\
+    \hline
+    ; & \verb+Semicolon+ \\
+    \hline
+    , & \verb+Comma+ \\
+    \hline
+    ident & \verb+Name+ \\
+    \hline
+\end{tabular}
+

@@ -1,0 +1,32 @@
+\section{Построение синтаксического анализатора}
+
+Построим множества \textbf{FIRST} и \textbf{FOLLOW} для нетерминалов.
+
+% S -> "var" D
+% D -> ED | eps
+% E -> n I : n ;
+% I -> , n I | eps
+
+\begin{tabular}{| l | l | l |}
+    \hline
+    \textbf{Нетерминал} & \textbf{FIRST} & \textbf{FOLLOW} \\
+    \hline
+    $S$ & n(<<var>>) & n, \$ \\
+    \hline
+    $D$ & n, $\varepsilon$ & n, \$ \\
+    \hline
+    $E$ & n & n, \$ \\
+    \hline
+    $I$ & n, $\varepsilon$ & : \\
+    \hline
+\end{tabular}
+\\
+Структуры для хранения дерева полностью повторяют грамматику:
+
+\begin{verbatim}
+data SNode = SNode DNode
+data DNode = DNode ENode DNode | DEps
+data ENode = ENode String INode String
+data INode = INode String INode | IEps
+\end{verbatim}
+

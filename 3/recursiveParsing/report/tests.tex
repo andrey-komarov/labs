@@ -1,0 +1,126 @@
+\subsection{Тест \No1}
+
+\texttt{var a : int;}
+
+Ожидается успех
+
+Успех! 
+
+\includegraphics[width=\textwidth]{test1.eps}
+
+\subsection{Тест \No2}
+
+\texttt{vbr b : int;}
+
+Ожидается провал
+
+Ошибка: \texttt{Expected Name "var", found Name "vbr"}
+
+\subsection{Тест \No3}
+
+\texttt{var a, b : int;}
+
+Ожидается успех
+
+Успех! 
+
+\includegraphics[width=\textwidth]{test3.eps}
+
+\subsection{Тест \No4}
+
+\texttt{var a, b :: int;}
+
+Ожидается провал
+
+Ошибка: \texttt{Expected Type name, found Colon}
+
+\subsection{Тест \No5}
+
+\texttt{var a, b : int; c : int;}
+
+Ожидается успех
+
+Успех! 
+
+\includegraphics[width=\textwidth]{test5.eps}
+
+\subsection{Тест \No6}
+
+\texttt{var a, b : int; c, d : int;}
+
+Ожидается успех
+
+Успех! 
+
+\includegraphics[width=\textwidth]{test6.eps}
+
+\subsection{Тест \No7}
+
+\texttt{var a,, b : int;}
+
+Ожидается провал
+
+Ошибка: \texttt{Expected Variable name, found Comma}
+
+\subsection{Тест \No8}
+
+\texttt{var a, b, c : int;;}
+
+Ожидается провал
+
+Ошибка: \texttt{Expected Variable name, found Semicolon}
+
+\subsection{Тест \No9}
+
+\texttt{var a : int}
+
+Ожидается провал
+
+Ошибка: \texttt{Expected Semicolon, found EOLN}
+
+\subsection{Тест \No10}
+
+\texttt{v a r a : int}
+
+Ожидается провал
+
+Ошибка: \texttt{Expected Name "var", found Name "v"}
+
+\subsection{Тест \No11}
+
+\texttt{     var a : int}
+
+Ожидается провал
+
+Ошибка: \texttt{Expected Semicolon, found EOLN}
+
+\subsection{Тест \No12}
+
+\texttt{var}
+
+Ожидается успех
+
+Успех! 
+
+\includegraphics[width=\textwidth]{test12.eps}
+
+\subsection{Тест \No13}
+
+\texttt{var ololo : a;}
+
+Ожидается успех
+
+Успех! 
+
+\includegraphics[width=\textwidth]{test13.eps}
+
+\subsection{Тест \No14}
+
+\texttt{var ololo, tata, asda, asdf : asldfa; asdf, asdfas,f,asdf,asdf : double;a,b,c,d,e,f,g:bool;}
+
+Ожидается успех
+
+Успех! 
+
+\includegraphics[width=\textwidth]{test14.eps}
+
