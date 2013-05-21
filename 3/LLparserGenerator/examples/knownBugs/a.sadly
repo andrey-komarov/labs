@@ -1,0 +1,5 @@
+A :: [a-z]+
+
+# Crashes recognizer
+a : A       { System.err.println('}'); }
+  ;
